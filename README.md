@@ -42,6 +42,14 @@ sudo make uninstall
 ```
 
 ## Usage
+To allow your computer to deploy to reroku, you must first share your [public key](https://help.github.com/articles/generating-an-ssh-key/) with reroku
+
+```
+cat ~/.ssh/id_rsa.pub | ssh root@192.168.0.12 -- sudo sshcommand acl-add reroku <KEY>
+```
+Where `<KEY>` is the key associated with your public key in `id_rsa.pub` (usually an email address)
+
+
 To deploy your APP to reroku:
 
 ```
