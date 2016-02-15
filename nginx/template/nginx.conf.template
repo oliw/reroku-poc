@@ -1,0 +1,16 @@
+server {
+  listen      [::]:80;
+  listen      80;
+  server_name {{APP}}.{{HOST}};
+  access_log  /var/log/nginx/{{APP}}-access.log;
+  error_log   /var/log/nginx/{{APP}}-error.log;
+
+  location  / {
+    proxy_pass  http://{{APP}};
+    proxy_http_version 1.1;
+  }
+}
+
+upstream {{APP}} {
+  server {{IP}}:{{PORT}};
+}

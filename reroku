@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+export REROKU_ROOT=${REROKU_ROOT:=/home/reroku/reroku}
+export REROKU_LIB_DIR=${REROKU_LIB_DIR:=/var/lib/reroku}
+export HOST=${HOST:=raspberrypi}
+
+case "$1" in
+  receive)
+    echo "Received new app tar..."
+    APP=$2
+    cat | reroku build $APP && reroku release $APP
+    reroku deploy $APP
+  ;;
+  build)
+    echo "Building..."
+    BASE_IMAGE='reroku/python'
+    APP_IMAGE=$2
+    id=$(cat | docker run -i -a stdin $BASE_IMAGE /bin/bash -c "mkdir -p /app && tar xf - -C /app")
+    test "$(docker wait $id)" -eq 0
+    docker commit $id $APP_IMAGE > /dev/null
+
+    id=$(docker run -d $APP_IMAGE /build)
+    docker attach $id
+    test "$(docker wait $id)" -eq 0
+    docker commit $id $APP_IMAGE > /dev/null
+    ;;
+  release)
+    echo "Releasing..."
+    # TODO set environment variables etc
+    ;;
+  deploy)
+    echo "Deploying..."
+    APP=$2
+    APP_IMAGE=$APP
+    RUNNING_IDS=$(docker ps -q --filter="ancestor=$APP_IMAGE")
+    # start container
+    id=$(docker run -d $APP_IMAGE /start)
+    # create new nginx.config
+    ip=$(docker inspect --format '{{ .NetworkSettings.IPAddress }}' $id)
+    port=80
+    
+    sed -e "s/{{APP}}/$APP/g; s/{{HOST}}/$HOST/g; s/{{IP}}/$ip/g; s/{{PORT}}/$port/g;" $REROKU_LIB_DIR/nginx/template/nginx.conf.template > $REROKU_ROOT/$APP/nginx.conf
+
+    # restart nginx
+    sudo /etc/init.d/nginx reload > /dev/null
+    # stop old ones
+    if [[ ! -z $RUNNING_IDS ]]; then
+      echo $RUNNING_IDS | while read line ; do docker stop $line; docker rm $line; done
+    fi
+    # prosper
+    ;;
+  git-hook)
+    APP=$2
+
+    while read oldrev newrev refname
+    do
+      if [[ $refname = "refs/heads/master" ]] ; then
+        git archive $newrev | reroku receive $APP
+      fi
+    done
+    ;;
+  git-*)
+    APP="$(echo $2 | perl -pe 's/(?<!\\)'\''//g' | sed 's/\\'\''/'\''/g' | sed 's/^\///g')"
+    APP_PATH=$REROKU_ROOT/$APP
+
+    if [[ $1 == "git-receive-pack" && ! -d "$APP_PATH/refs" ]]; then
+      git init --bare $APP_PATH > /dev/null
+      PRERECEIVE_HOOK="$APP_PATH/hooks/pre-receive"
+      cat > $PRERECEIVE_HOOK <<EOF
+#!/usr/bin/env bash
+set -e; set -o pipefail;
+cat | REROKU_ROOT="$REROKU_ROOT" reroku git-hook $APP
+EOF
+      chmod +x $PRERECEIVE_HOOK
+    fi
+
+    if [[ $1 == "git-receive-pack" ]]; then
+      args="$1 '$APP_PATH'"
+    else
+      args=$*
+    fi
+    git-shell -c "$args"
+    ;;
+  *)
+    echo 'Not implemented yet'
+    ;;
+esac

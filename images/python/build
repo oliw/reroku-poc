@@ -1,0 +1,6 @@
+#!/bin/bash
+set -eo pipefail
+
+pushd /app
+pip install -r requirements.txt
+popd
