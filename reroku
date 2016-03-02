@@ -35,7 +35,7 @@ case "$1" in
     APP_IMAGE=$APP
     RUNNING_IDS=$(docker ps -q --filter="ancestor=$APP_IMAGE")
     # start container
-    id=$(docker run -d $APP_IMAGE /start)
+    id=$(docker run --restart always -d $APP_IMAGE /start)
     # create new nginx.config
     ip=$(docker inspect --format '{{ .NetworkSettings.IPAddress }}' $id)
     port=80
